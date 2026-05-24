@@ -55,7 +55,7 @@ local PickupRemote = RemotesFolder:WaitForChild("Pickup")
 -- ==========================================
 local isRejoining = false
 local autoRejoinCode = [[
-loadstring(game:HttpGet("haha"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/fjqe/PlopwareLoader/refs/heads/main/tower.lua"))()
 ]]
 
 local function triggerServerRejoin()
