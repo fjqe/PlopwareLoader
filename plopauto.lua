@@ -3,7 +3,7 @@ local queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport)
 if queue_on_teleport then
     queue_on_teleport([[
         task.wait(5)
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/fjqe/PlopwareLoader/refs/heads/main/plopauto.lua"))() -- Recommendation: Host this script on GitHub/Pastebin for seamless looping
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/fjqe/PlopwareLoader/refs/heads/main/plopauto.lua"))() -- Host this script on GitHub/Pastebin for seamless looping
     ]])
 end
 
@@ -13,15 +13,19 @@ local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 
 local localPlayer = Players.LocalPlayer
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1510751060816302154/v8PSzGnoD5tAXfSdoWL8wc5uKKVfuH9TjPXBIOskEOzNFYjr4ew9Bdl-yp-fLZSeCSF7"
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1510762145892012032/wznLPHIpfnc6Y4p523iM-C7ZHQCSxFQjk2f8V3m6-FNxJre46Ahw92hPLStyM8ahiYdp"
+
+-- Target Threshold Config
+local TARGET_GENERATOR_COUNT = 15
 
 -- Tracking States
 local startTime = os.time()
 local initialMoney = 0
 local initialXP = 0
 local generatorsCompleted = 0
+local processedGenerators = {} -- Prevents re-interacting with completed assets in the same round
 
--- Setup Core Stat Locations (Referencing image_6d4ab7.png, image_6d4b37.png, image_6d527d.png)
+-- Setup Core Stat Locations
 local leaderstats = localPlayer:WaitForChild("leaderstats", 15)
 local playerData = localPlayer:WaitForChild("PlayerData", 15)
 
@@ -50,7 +54,7 @@ local function sendWebhookNotification(title, description, fields)
     local embed = {
         ["title"] = title,
         ["description"] = description,
-        ["color"] = 0x1F1F1F, -- Sleek charcoal tone
+        ["color"] = 0x1F1F1F, 
         ["fields"] = fields,
         ["footer"] = { ["text"] = "Autofarm Status | By Femini" },
         ["timestamp"] = DateTime.now():ToIsoDate()
@@ -66,7 +70,7 @@ local function sendWebhookNotification(title, description, fields)
     end)
 end
 
--- Validation State Checking Routine (Referencing image_6d4e7a.png)
+-- Validation State Checking Routine
 local function checkSpectatorState()
     local playersFolder = Workspace:FindFirstChild("Players")
     if playersFolder and playersFolder:FindFirstChild("Spectating") then
@@ -77,20 +81,25 @@ local function checkSpectatorState()
     return false
 end
 
--- Generator Core Iteration Sequence (Restricted to Ingame folder via image_6d4a3b.png)
+-- Generator Core Iteration Sequence (Restricted to Ingame folder)
 local function sweepIngameGenerators()
-    -- Confines discovery purely within Workspace.Map.Ingame per image_6d4a3b.png
     local ingameFolder = Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Ingame")
     if not ingameFolder then return end
 
     local generators = {}
     for _, item in ipairs(ingameFolder:GetDescendants()) do
         if item.Name == "Generator" and (item:IsA("Model") or item:IsA("Folder")) then
-            table.insert(generators, item)
+            -- Only insert if it hasn't been handled already this match round
+            if not processedGenerators[item] then
+                table.insert(generators, item)
+            end
         end
     end
 
     for _, gen in ipairs(generators) do
+        -- Hard-stop execution instantly if target goal is met mid-sweep
+        if generatorsCompleted >= TARGET_GENERATOR_COUNT then break end
+
         local character = localPlayer.Character
         local rootPart = character and character:FindFirstChild("HumanoidRootPart")
         if not rootPart then continue end
@@ -103,10 +112,11 @@ local function sweepIngameGenerators()
         local remoteEvent = remotesFolder and remotesFolder:FindFirstChild("RE")
 
         if centerPart and mainPart and prompt and remoteEvent then
-            -- Execution adjustments to handle physics replication safely
+            processedGenerators[gen] = true -- Lock target asset node
+            
             rootPart.Velocity = Vector3.new(0, 0, 0)
             rootPart.CFrame = centerPart.CFrame
-            task.wait(0.2)
+            task.wait(0.25)
 
             if fireproximityprompt then
                 fireproximityprompt(prompt)
@@ -123,27 +133,35 @@ local function sweepIngameGenerators()
             end)
             
             generatorsCompleted = generatorsCompleted + 1
-            task.wait(0.4)
+            print("[By Femini] Generator progress: " .. tostring(generatorsCompleted) .. "/" .. tostring(TARGET_GENERATOR_COUNT))
+            task.wait(0.5)
         end
     end
 end
 
 -- Main Loop Automation System
 task.spawn(function()
-    print("[By Femini] Monitoring system deployed.")
+    print("[By Femini] Gated counter engine deployed. Target quota set to: " .. tostring(TARGET_GENERATOR_COUNT))
     
-    -- Phase 1: Wait until you are out of spectators and loaded inside the round map
-    while checkSpectatorState() or not (Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Ingame")) do
-        print("[By Femini] Awaiting round initialization / Currently spectating...")
-        task.wait(2)
+    while generatorsCompleted < TARGET_GENERATOR_COUNT do
+        local isSpectating = checkSpectatorState()
+        local mapReady = Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Ingame")
+        
+        if not isSpectating and mapReady then
+            sweepIngameGenerators()
+        else
+            -- If map unloads or disappears, clear our tracking history table for the upcoming round layout
+            if not mapReady then
+                table.clear(processedGenerators)
+            end
+            task.wait(2)
+        end
+        task.wait(1)
     end
 
-    print("[By Femini] Ingame match discovered. Commencing objective sweep.")
-    task.wait(1) -- Safety buffer for environment rendering
-    
-    sweepIngameGenerators()
+    print("[By Femini] Target quota fulfilled. Compiling session metrics...")
 
-    -- Phase 2: Compute session statistics to report data via Discord
+    -- Phase 2: Compute final session statistics
     local elapsedTime = os.time() - startTime
     local currentMoney = leaderstats and leaderstats:FindFirstChild("Money") and leaderstats.Money.Value or initialMoney
     local moneyGained = currentMoney - initialMoney
@@ -161,21 +179,21 @@ task.spawn(function()
 
     -- Dispatch Discord Metrics
     sendWebhookNotification(
-        "✨ Cycle Complete — Match Summary",
-        "Autofarm successfully cleared active tasks inside the `Ingame` folder layout.",
+        "🏆 Target Quota Reached — Cycling Server Instance",
+        "Autofarm engine successfully hit the complete batch threshold requirement.",
         {
             { ["name"] = "User Profile", ["value"] = "`" .. localPlayer.Name .. "`", ["inline"] = true },
-            { ["name"] = "Session Elapsed Time", ["value"] = "`" .. runtimeString .. "`", ["inline"] = true },
-            { ["name"] = "Generators Cleared", ["value"] = "`" .. tostring(generatorsCompleted) .. "`", ["inline"] = true },
+            { ["name"] = "Session Run Time", ["value"] = "`" .. runtimeString .. "`", ["inline"] = true },
+            { ["name"] = "Generators Cleared", ["value"] = "`" .. tostring(generatorsCompleted) .. "/" .. tostring(TARGET_GENERATOR_COUNT) .. "`", ["inline"] = true },
             { ["name"] = "Active Character Profile", ["value"] = "`" .. equippedSurvivor .. "`", ["inline"] = true },
             { ["name"] = "Currency Obtained", ["value"] = "`+" .. tostring(moneyGained) .. " Cash`", ["inline"] = true },
             { ["name"] = "Character Experience Gained", ["value"] = "`+" .. tostring(xpGained) .. " XP`", ["inline"] = true }
         }
     )
 
-    -- Phase 3: Paced Rejoin Automation Loop
-    task.wait(3)
-    print("[By Femini] Cycling servers to begin next farm run...")
+    -- Phase 3: Initiate Safe Server Jump Sequence
+    task.wait(2)
+    print("[By Femini] Jump parameters verified. Moving to clean server...")
     
     pcall(function()
         TeleportService:Teleport(game.PlaceId, localPlayer)
