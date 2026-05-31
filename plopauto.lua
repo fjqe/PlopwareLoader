@@ -1,9 +1,10 @@
--- Step 1: Cache script for server hopping SAFELY (Done before heavy tasks)
+-- Step 1: Pre-cache persistence script for seamless execution transitions
 local queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
 if queue_on_teleport then
     pcall(function()
         queue_on_teleport([[
-            task.wait(7)
+            task.wait(6)
+            print("[Plopware] Reloading loader execution script...")
             loadstring(game:HttpGet("https://raw.githubusercontent.com/fjqe/PlopwareLoader/refs/heads/main/plopauto.lua"))()
         ]])
     end)
@@ -17,59 +18,37 @@ local HttpService = game:GetService("HttpService")
 local localPlayer = Players.LocalPlayer
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1510762145892012032/wznLPHIpfnc6Y4p523iM-C7ZHQCSxFQjk2f8V3m6-FNxJre46Ahw92hPLStyM8ahiYdp"
 
--- Configuration
+-- Target Parameters
 local TARGET_GENERATOR_COUNT = 15
 
--- Global States
+-- Global Session Variables
 local startTime = os.time()
 local initialMoney = 0
 local initialXP = 0
 local generatorsCompleted = 0
 local processedGenerators = {}
 
--- Safely resolve statistics without causing execution errors
-local leaderstats = localPlayer:WaitForChild("leaderstats", 20)
-local playerData = localPlayer:WaitForChild("PlayerData", 20)
+print("[DEBUG] Script initialized. Waiting for baseline game data components...")
 
-if leaderstats then
-    local moneyObj = leaderstats:WaitForChild("Money", 5)
-    initialMoney = moneyObj and moneyObj.Value or 0
-end
-
-local equippedSurvivor = "None"
-if playerData then
-    local equippedFolder = playerData:WaitForChild("Equipped", 5)
-    local survivorObj = equippedFolder and equippedFolder:WaitForChild("Survivor", 5)
-    equippedSurvivor = survivorObj and survivorObj.Value or "None"
-end
-
-if equippedSurvivor ~= "None" and playerData then
-    pcall(function()
-        local purchasedFolder = playerData:FindFirstChild("Purchased")
-        local survivorsFolder = purchasedFolder and purchasedFolder:FindFirstChild("Survivors")
-        local xpObj = survivorsFolder and survivorsFolder:FindFirstChild(equippedSurvivor)
-        initialXP = xpObj and xpObj.Value or 0
-    end)
-end
-
--- Robust Discord Webhook Wrapper API
-local function sendWebhookNotification(title, description, fields)
+-- ==========================================
+-- WEBHOOK TRANSMISSION ENGINE
+-- ==========================================
+local function sendWebhookNotification(title, description, colorCode, fields)
     local requestStr = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
     if not requestStr then 
-        warn("[Engine Error] Executor missing required HTTP Request wrapper function.")
+        warn("[Webhook Warning] Executor lacks an HTTP request function.")
         return 
     end
 
-    -- Strictly formatted payload to prevent HTTP 400 Errors
     local payload = HttpService:JSONEncode({
         ["embeds"] = {
             {
                 ["title"] = title,
                 ["description"] = description,
-                ["color"] = 16711680, -- Red highlight color code
+                ["color"] = colorCode, 
                 ["fields"] = fields,
-                ["footer"] = { ["text"] = "Plopware Analytics Engine" },
-                ["timestamp"] = DateTime.now():ToIsoDate()
+                ["footer"] = { ["text"] = "Plopware Analytics Engine V3 | By Femini" },
+                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
         }
     })
@@ -83,12 +62,63 @@ local function sendWebhookNotification(title, description, fields)
         })
     end)
     
-    if not success then
-        warn("[Webhook Error] Critical transmission failure: " .. tostring(response))
+    if success then
+        print("[DEBUG] Webhook payload successfully transmitted: " .. title)
+    else
+        warn("[Webhook Error] Transaction failure: " .. tostring(response))
     end
 end
 
--- Match State Validation System
+-- ==========================================
+-- SAFE DATA INITIALIZATION PIPELINE
+-- ==========================================
+local leaderstats = localPlayer:WaitForChild("leaderstats", 25)
+local playerData = localPlayer:WaitForChild("PlayerData", 25)
+
+if leaderstats then
+    local moneyObj = leaderstats:WaitForChild("Money", 10)
+    initialMoney = moneyObj and moneyObj.Value or 0
+    print("[DEBUG] Baseline Money logged: " .. tostring(initialMoney))
+else
+    warn("[DEBUG] leaderstats failed to load within time envelope.")
+end
+
+local equippedSurvivor = "None"
+if playerData then
+    local equippedFolder = playerData:WaitForChild("Equipped", 10)
+    local survivorObj = equippedFolder and equippedFolder:WaitForChild("Survivor", 5)
+    equippedSurvivor = survivorObj and survivorObj.Value or "None"
+    print("[DEBUG] Baseline Active Profile: " .. tostring(equippedSurvivor))
+end
+
+if equippedSurvivor ~= "None" and playerData then
+    pcall(function()
+        local purchasedFolder = playerData:FindFirstChild("Purchased")
+        local survivorsFolder = purchasedFolder and purchasedFolder:FindFirstChild("Survivors")
+        local xpObj = survivorsFolder and survivorsFolder:FindFirstChild(equippedSurvivor)
+        initialXP = xpObj and xpObj.Value or 0
+        print("[DEBUG] Baseline XP logged: " .. tostring(initialXP))
+    end)
+end
+
+-- 🚀 TRIGGER: STARTUP WEBHOOK
+sendWebhookNotification(
+    "🚀 Autofarm Session Initiated",
+    "A new server instance has been joined and the script has successfully attached.",
+    4321431, -- Neon Green Color
+    {
+        { ["name"] = "Account Identity", ["value"] = "||`" .. localPlayer.Name .. "`||", ["inline"] = true },
+        { ["name"] = "Target Quota", ["value"] = "`" .. tostring(TARGET_GENERATOR_COUNT) .. " Generators`", ["inline"] = true },
+        { ["name"] = "Starting Cash", ["value"] = "`$" .. tostring(initialMoney) .. "`", ["inline"] = true },
+        { ["name"] = "Active Profile", ["value"] = "`" .. equippedSurvivor .. "`", ["inline"] = true },
+        { ["name"] = "Starting XP", ["value"] = "`" .. tostring(initialXP) .. " XP`", ["inline"] = true }
+    }
+)
+
+-- ==========================================
+-- CORE AUTOMATION MECHANICS
+-- ==========================================
+
 local function checkSpectatorState()
     local playersFolder = Workspace:FindFirstChild("Players")
     if playersFolder and playersFolder:FindFirstChild("Spectating") then
@@ -99,9 +129,15 @@ local function checkSpectatorState()
     return false
 end
 
--- Objective Clearing Function
+local function getValidCharacterPart()
+    local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+    local rootPart = character:WaitForChild("HumanoidRootPart", 10)
+    return rootPart
+end
+
 local function sweepIngameGenerators()
-    local ingameFolder = Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Ingame")
+    local mapFolder = Workspace:FindFirstChild("Map")
+    local ingameFolder = mapFolder and mapFolder:FindFirstChild("Ingame")
     if not ingameFolder then return end
 
     local generators = {}
@@ -116,8 +152,7 @@ local function sweepIngameGenerators()
     for _, gen in ipairs(generators) do
         if generatorsCompleted >= TARGET_GENERATOR_COUNT then break end
 
-        local character = localPlayer.Character
-        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        local rootPart = getValidCharacterPart()
         if not rootPart then continue end
 
         local positionsFolder = gen:FindFirstChild("Positions")
@@ -129,14 +164,14 @@ local function sweepIngameGenerators()
 
         if centerPart and mainPart and prompt and remoteEvent then
             processedGenerators[gen] = true 
-            
-            -- Lock positioning elements firmly
+
+            -- Hard anchor to bypass distance checks
             rootPart.Velocity = Vector3.new(0, 0, 0)
             rootPart.CFrame = centerPart.CFrame
-            task.wait(0.35) -- Slightly higher latency padding for replication validation
+            rootPart.Anchored = true 
+            task.wait(0.4) 
 
-            -- Safe Proximity Prompt execution
-            local promptSuccess = pcall(function()
+            pcall(function()
                 if fireproximityprompt then
                     fireproximityprompt(prompt)
                 else
@@ -146,13 +181,13 @@ local function sweepIngameGenerators()
                 end
             end)
             
-            task.wait(0.2)
+            task.wait(0.2) 
             
-            -- Network Replication
             pcall(function()
                 remoteEvent:FireServer()
             end)
             
+            rootPart.Anchored = false 
             generatorsCompleted = generatorsCompleted + 1
             print("[Plopware] Checked Task Node: " .. tostring(generatorsCompleted) .. "/" .. tostring(TARGET_GENERATOR_COUNT))
             task.wait(0.5)
@@ -160,28 +195,30 @@ local function sweepIngameGenerators()
     end
 end
 
--- Execution Flow Control
+-- ==========================================
+-- MAIN EXECUTION THREAD
+-- ==========================================
 task.spawn(function()
-    print("[Plopware] Main orchestration thread successfully connected.")
+    print("[Plopware] Main execution loop thread established.")
     
     while generatorsCompleted < TARGET_GENERATOR_COUNT do
         local isSpectating = checkSpectatorState()
-        local mapReady = Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Ingame")
+        local mapFolder = Workspace:FindFirstChild("Map")
+        local mapReady = mapFolder and mapFolder:FindFirstChild("Ingame")
         
         if not isSpectating and mapReady then
             sweepIngameGenerators()
         else
             if not mapReady then
-                table.clear(processedGenerators) -- Flush match table context when map drops
+                table.clear(processedGenerators)
             end
-            task.wait(2)
+            task.wait(3)
         end
         task.wait(1)
     end
 
-    print("[Plopware] Hit target metrics. Packing summary telemetry...")
+    print("[Plopware] Objective target numbers satisfied. Compiling metrics data structures...")
 
-    -- Compute Session Statistics safely
     local elapsedTime = os.time() - startTime
     local currentMoney = initialMoney
     if leaderstats and leaderstats:FindFirstChild("Money") then
@@ -202,10 +239,11 @@ task.spawn(function()
     local seconds = elapsedTime % 60
     local runtimeString = string.format("%dm %ds", minutes, seconds)
 
-    -- Dispatch Discord Embedded Notification
+    -- 🏆 TRIGGER: COMPLETION WEBHOOK
     sendWebhookNotification(
-        "🏆 Session Performance Overview",
-        "Target threshold requirements have been completely logged and verified.",
+        "🏆 Session Performance Analytics Summary",
+        "Target execution cycle threshold successfully logged and verified.",
+        16728320, -- Vivid Orange-Red Accent
         {
             { ["name"] = "Account Identity", ["value"] = "||`" .. localPlayer.Name .. "`||", ["inline"] = true },
             { ["name"] = "Duration Elapsed", ["value"] = "`" .. runtimeString .. "`", ["inline"] = true },
@@ -216,9 +254,9 @@ task.spawn(function()
         }
     )
 
-    -- Safe Transfer Sequence
-    task.wait(3)
-    print("[Plopware] Cycling engine server node.")
+    -- Teleport Cycle Launch
+    task.wait(2)
+    print("[Plopware] Transferring current client session down a clean server pipeline.")
     pcall(function()
         TeleportService:Teleport(game.PlaceId, localPlayer)
     end)
