@@ -3,7 +3,7 @@ local queue_on_teleport = queue_on_teleport or (syn and syn.queue_on_teleport)
 if queue_on_teleport then
     queue_on_teleport([[
         task.wait(5)
-        loadstring(game:HttpGet("YOUR_HOSTED_SCRIPT_URL_HERE"))() -- Recommendation: Host this script on GitHub/Pastebin for seamless looping
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/fjqe/PlopwareLoader/refs/heads/main/plopauto.lua"))() -- Recommendation: Host this script on GitHub/Pastebin for seamless looping
     ]])
 end
 
